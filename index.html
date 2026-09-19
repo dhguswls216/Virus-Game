@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>바이러스 대시</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Gowun+Dodum&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#0B1440; --deep:#131E5C; --grid:#3FD8FF; --band:#1F5BFF;
+  --virus:#FF3E8A; --vaccine:#3CF2B5; --ink:#EAF1FF; --soft:#8FB2FF;
+  --panel:rgba(14,22,72,.86);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--panel:rgba(14,22,72,.86)}}
+:root[data-theme="dark"]{--panel:rgba(14,22,72,.86)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--void);color:var(--ink);overflow:hidden;
+  font-family:"Gowun Dodum","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  -webkit-user-select:none;user-select:none;touch-action:none}
+#wrap{position:relative;height:100%;width:100%;display:flex;align-items:center;justify-content:center}
+#stage{position:relative;aspect-ratio:480/800;height:100%;max-width:100%;max-height:100%}
+canvas{display:block;width:100%;height:100%}
+.display{font-family:"Do Hyeon","Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-weight:400}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center}
+.screen.on{display:flex}
+.dim{background:linear-gradient(180deg,rgba(11,20,64,.55),rgba(11,20,64,.88))}
+h1{font-size:clamp(44px,12vmin,76px);line-height:.95;letter-spacing:-.01em;color:var(--ink);
+  text-shadow:3px 0 0 var(--virus),-3px 0 0 var(--grid)}
+.sub{font-size:16px;color:var(--soft);max-width:30ch;line-height:1.6}
+button{font-family:"Do Hyeon",sans-serif;font-size:24px;border:0;cursor:pointer;color:#fff;
+  background:var(--band);padding:14px 30px;border-radius:14px;box-shadow:0 5px 0 #0E2E9C;transition:transform .08s}
+button:active{transform:translateY(4px);box-shadow:0 1px 0 #0E2E9C}
+button:focus-visible{outline:3px solid var(--grid);outline-offset:3px}
+button.ghost{background:transparent;box-shadow:none;border:2px solid var(--soft);color:var(--soft);font-size:20px;padding:10px 22px}
+.cards{display:flex;gap:14px;width:100%;justify-content:center}
+.card{flex:1;max-width:200px;background:var(--panel);border:3px solid transparent;border-radius:20px;padding:12px 10px 14px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:6px;transition:border-color .15s,transform .15s}
+.card:hover{transform:translateY(-3px)}
+.card.sel{border-color:var(--grid);box-shadow:0 0 24px rgba(63,216,255,.35)}
+.card:focus-visible{outline:3px solid var(--grid);outline-offset:3px}
+.portrait{width:100%;aspect-ratio:1;background-repeat:no-repeat;background-size:800% 100%;background-position:0 0}
+.card.sel .portrait{animation:hop .5s ease-in-out infinite alternate}
+@keyframes hop{to{transform:translateY(-6px)}}
+.card .name{font-family:"Do Hyeon",sans-serif;font-size:26px}
+.card .trait{font-size:14px;color:var(--soft);line-height:1.45}
+#hud{position:absolute;left:0;right:0;top:0;display:none;justify-content:space-between;align-items:flex-start;padding:14px 16px;pointer-events:none}
+#hud.on{display:flex}
+#lives{display:flex;gap:4px}
+#lives span{font-size:24px;filter:drop-shadow(0 2px 0 rgba(0,0,0,.35))}
+#score{font-family:"Do Hyeon",sans-serif;font-size:34px;text-align:right;line-height:1}
+#score small{display:block;font-family:"Gowun Dodum",sans-serif;font-size:13px;color:var(--soft);margin-top:4px}
+#pauseBtn{pointer-events:auto;font-size:16px;padding:6px 12px;margin-top:8px;box-shadow:0 3px 0 #0E2E9C}
+#pad{position:absolute;left:0;right:0;bottom:14px;display:none;justify-content:center;gap:12px;padding:0 14px}
+#pad.on{display:flex}
+#pad button{flex:1;max-width:130px;font-size:22px;padding:14px 0;background:rgba(31,91,255,.8)}
+#toast{position:absolute;top:22%;left:0;right:0;text-align:center;font-family:"Do Hyeon",sans-serif;font-size:30px;
+  opacity:0;transition:opacity .25s;pointer-events:none;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.legend{display:flex;gap:18px;justify-content:center;font-size:14px;color:var(--soft);flex-wrap:wrap}
+.legend b{font-weight:400;color:var(--ink)}
+.big{font-family:"Do Hyeon",sans-serif;font-size:64px;line-height:1}
+.row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.keys{font-size:14px;color:var(--soft);line-height:1.7}
+@media (prefers-reduced-motion: reduce){.card.sel .portrait{animation:none}}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="stage">
+  <canvas id="c" width="480" height="800" aria-label="게임 화면"></canvas>
+
+  <div id="hud"><div><div id="lives" aria-label="남은 목숨"></div><button id="pauseBtn">일시정지</button></div>
+    <div id="score">0<small>0 m</small></div></div>
+  <div id="toast"></div>
+  <div id="pad"><button data-k="left" aria-label="왼쪽">◀</button><button data-k="jump">점프</button><button data-k="right" aria-label="오른쪽">▶</button></div>
+
+  <section class="screen on dim" id="sTitle">
+    <h1 class="display">바이러스<br>대시</h1>
+    <p class="sub">코드 세상을 달리며 바이러스를 피하고, 백신으로 목숨을 채우세요.</p>
+    <div class="legend"><span>🦠 <b>작은 바이러스</b> 점프로 넘기</span><span>☣ <b>큰 바이러스</b> 옆으로 피하기</span><span>💉 <b>백신</b> 목숨 +1 (최대 5)</span></div>
+    <button id="toSelect" disabled>불러오는 중…</button>
+  </section>
+
+  <section class="screen dim" id="sSelect">
+    <h2 class="display" style="font-size:38px">누구와 달릴까요?</h2>
+    <div class="cards">
+      <div class="card sel" tabindex="0" data-c="bear" role="button" aria-pressed="true">
+        <div class="portrait" id="pBear"></div><div class="name">AI 곰</div>
+        <div class="trait">점프가 길고 묵직해요.<br>큰 무리도 여유 있게 넘어요.</div></div>
+      <div class="card" tabindex="0" data-c="chick" role="button" aria-pressed="false">
+        <div class="portrait" id="pChick"></div><div class="name">AI 오리</div>
+        <div class="trait">레인 이동이 빨라요.<br>좁은 틈을 재빨리 빠져나가요.</div></div>
+    </div>
+    <button id="startBtn">달리기 시작</button>
+    <p class="keys">←→ 또는 A·D 이동 · ↑ 또는 스페이스 점프 · 모바일은 스와이프</p>
+  </section>
+
+  <section class="screen dim" id="sPause">
+    <h2 class="display" style="font-size:44px">잠깐 멈춤</h2>
+    <div class="row"><button id="resumeBtn">계속 달리기</button><button class="ghost" id="quitBtn">처음으로</button></div>
+  </section>
+
+  <section class="screen dim" id="sOver">
+    <h2 class="display" style="font-size:40px">시스템 다운</h2>
+    <div class="big" id="finalScore">0</div>
+    <p class="sub" id="finalInfo"></p>
+    <div class="row"><button id="againBtn">다시 달리기</button><button class="ghost" id="changeBtn">캐릭터 바꾸기</button></div>
+  </section>
+</div></div>
+
+<script>
+const SHEETS = {bear:"assets/sprites/bear_sheet.png", chick:"assets/sprites/chick_sheet.png"};
+const CHARS = {
+  bear:{name:"AI 곰", jumpDur:0.74, jumpH:120, laneSpeed:9},
+  chick:{name:"AI 오리", jumpDur:0.62, jumpH:105, laneSpeed:15}
+};
+// sheet cells: 0 front, 1-5 run, 6 happy, 7 hurt
+const CELL=300, FEET=270, CHAR_H=210;
+
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const W=480,H=800;
+function fit(){const dpr=Math.min(window.devicePixelRatio||1,2);cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+fit(); addEventListener('resize',fit);
+
+const imgs={}; let loaded=0;
+for(const k in SHEETS){const im=new Image();im.onload=()=>{if(++loaded===2)ready()};im.src=SHEETS[k];imgs[k]=im}
+document.getElementById('pBear').style.backgroundImage=`url(${SHEETS.bear})`;
+document.getElementById('pChick').style.backgroundImage=`url(${SHEETS.chick})`;
+function ready(){const b=document.getElementById('toSelect');b.disabled=false;b.textContent='시작하기'}
+
+let best=0; try{best=+localStorage.getItem('vd_best')||0}catch(e){}
+
+// ---------- projection ----------
+const HORIZON=260, CX=W/2, FEET_Y=700, Z0=7;
+const LANE=0.34, SPAWN_Z=110;
+// cleaner: scale s = Z0/(z+Z0) (1 at player), road px per unit at player = 440
+function P(x,z){const s=Z0/(z+Z0);return{x:CX+x*440*s,y:HORIZON+(FEET_Y-HORIZON)*s,s}}
+
+// ---------- state ----------
+let state='title', charKey='bear', G=null, last=0;
+const screens=['sTitle','sSelect','sPause','sOver'];
+function show(id){screens.forEach(s=>document.getElementById(s).classList.toggle('on',s===id))}
+const isTouch=matchMedia('(pointer:coarse)').matches;
+
+function newGame(){
+  const c=CHARS[charKey];
+  G={c,lives:3,score:0,dist:0,speed:15,t:0,lane:0,x:0,jumpT:-1,jumpY:0,
+     objs:[],parts:[],nextRow:3,nextVax:40,anim:0,mood:null,moodT:0,inv:0,shake:0,flash:0,flashCol:'255,62,138',
+     scroll:0,codeCols:makeCode()};
+  renderLives(); updateScore();
+}
+function makeCode(){
+  const toks=['0','1','{','}','</>','=>','if','fn','01','AI','[]','&&','//','0x'];
+  const cols=[];for(let i=0;i<22;i++){cols.push({x:Math.random()*W,y:Math.random()*HORIZON,v:20+Math.random()*50,t:toks[i%toks.length],a:.15+Math.random()*.35,sz:10+Math.random()*10})}
+  return cols;
+}
+
+// ---------- spawning ----------
+function spawnRow(z){
+  const r=Math.random(), lanes=[-1,0,1];
+  const d=Math.min(1,G.dist/2500); // difficulty 0..1
+  const pick=()=>lanes.splice(Math.floor(Math.random()*lanes.length),1)[0];
+  if(r<0.35+d*0.2){ // one or two obstacles
+    const n=Math.random()<0.25+d*0.35?2:1;
+    for(let i=0;i<n;i++){const L=pick();G.objs.push({type:Math.random()<0.35+d*0.25?'big':'virus',lane:L,z,spin:Math.random()*6})}
+    const L=lanes.length?lanes[0]:null; if(L!==null&&Math.random()<0.5) addBits(L,z);
+  }else if(r<0.8){ addBits(pick(),z); if(Math.random()<0.4){const L=pick();G.objs.push({type:'virus',lane:L,z:z+6,spin:0})} }
+  else { const L=pick(); G.objs.push({type:'virus',lane:L,z,spin:0}); }
+}
+function addBits(L,z){for(let i=0;i<4;i++)G.objs.push({type:'bit',lane:L,z:z+i*2.2,spin:i})}
+
+// ---------- update ----------
+function update(dt){
+  const g=G;g.t+=dt;
+  g.speed=Math.min(34,15+g.dist/140);
+  const dz=g.speed*dt; g.dist+=dz; g.scroll=(g.scroll+dz)%4;
+  g.score+=dz*1.0;
+  // spawn rows by distance
+  g.nextRow-=dz; if(g.nextRow<=0){spawnRow(SPAWN_Z);g.nextRow=Math.max(7,13-g.dist/600)+Math.random()*5}
+  g.nextVax-=dz; if(g.nextVax<=0){const L=[-1,0,1][Math.floor(Math.random()*3)];
+    if(!g.objs.some(o=>o.lane===L&&Math.abs(o.z-SPAWN_Z)<5)) g.objs.push({type:'vax',lane:L,z:SPAWN_Z,spin:0});
+    g.nextVax=(g.lives<=2?160:260)+Math.random()*140}
+  // lane move
+  const tx=g.lane*LANE; g.x+=(tx-g.x)*Math.min(1,g.c.laneSpeed*dt);
+  // jump
+  if(g.jumpT>=0){g.jumpT+=dt;const p=g.jumpT/g.c.jumpDur;if(p>=1){g.jumpT=-1;g.jumpY=0}else g.jumpY=Math.sin(Math.PI*p)*g.c.jumpH}
+  // objects
+  for(const o of g.objs){
+    const pz=o.z; o.z-=dz; o.spin+=dt*3;
+    if(o.hit) continue;
+    if(pz>=0.4&&o.z<0.4){
+      const ox=o.lane*LANE;
+      if(Math.abs(ox-g.x)<LANE*0.55){
+        if(o.type==='bit'){o.hit=1;g.score+=15;burst(o,'63,216,255',6)}
+        else if(o.type==='vax'){o.hit=1;
+          if(g.lives<5){g.lives++;renderLives();toast('백신 획득! 목숨 +1','var(--vaccine)')}
+          else{g.score+=150;toast('목숨 가득! 보너스 +150','var(--vaccine)')}
+          g.mood='happy';g.moodT=0.7;burst(o,'60,242,181',16);g.flash=.35;g.flashCol='60,242,181'}
+        else{
+          const clear=o.type==='virus'&&g.jumpY>45;
+          if(!clear&&g.inv<=0){o.hit=1;g.lives--;renderLives();g.mood='hurt';g.moodT=0.7;g.inv=1.3;g.shake=.35;g.flash=.5;g.flashCol='255,62,138';burst(o,'255,62,138',18);
+            if(g.lives<=0){gameOver();return}}
+          else if(clear){g.score+=25}
+        }
+      }
+    }
+  }
+  g.objs=g.objs.filter(o=>o.z>-3&&!(o.hit&&(o.type==='bit'||o.type==='vax')));
+  // particles
+  for(const p of g.parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=500*dt;p.life-=dt}
+  g.parts=g.parts.filter(p=>p.life>0);
+  for(const c of g.codeCols){c.y+=c.v*dt;if(c.y>HORIZON-4){c.y=-10;c.x=Math.random()*W}}
+  if(g.moodT>0){g.moodT-=dt;if(g.moodT<=0)g.mood=null}
+  if(g.inv>0)g.inv-=dt; if(g.shake>0)g.shake-=dt; if(g.flash>0)g.flash-=dt*1.6;
+  g.anim+=dt*(6+g.speed*0.25);
+  updateScore();
+}
+function burst(o,col,n){const p=P(o.lane*LANE,Math.max(o.z,0));for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,v=120+Math.random()*220;
+  G.parts.push({x:p.x,y:p.y-40,vx:Math.cos(a)*v,vy:Math.sin(a)*v-160,life:.5+Math.random()*.4,col})}}
+
+// ---------- draw ----------
+function drawBG(){
+  const g=G;
+  // sky
+  let gr=ctx.createLinearGradient(0,0,0,HORIZON);gr.addColorStop(0,'#070D33');gr.addColorStop(1,'#1B2A86');
+  ctx.fillStyle=gr;ctx.fillRect(0,0,W,HORIZON);
+  // server skyline
+  ctx.fillStyle='#10195A';
+  const off=(g?g.dist*0.4:0)%60;
+  for(let i=-1;i<10;i++){const bx=i*60-off,bh=40+((i*37+Math.floor((g?g.dist:0)*0.4/60)*13)%5)*18;
+    ctx.fillRect(bx,HORIZON-bh,50,bh);
+    ctx.fillStyle='rgba(63,216,255,.35)';for(let r=0;r<bh/10-1;r++){if((r+i)%3)ctx.fillRect(bx+6,HORIZON-bh+6+r*10,38*( ((r*7+i)%4+1)/4 ),2)}
+    ctx.fillStyle='#10195A'}
+  // code rain
+  if(g){ctx.font='14px "Do Hyeon",monospace';for(const c of g.codeCols){ctx.fillStyle=`rgba(127,168,255,${c.a})`;ctx.font=`${c.sz|0}px "Do Hyeon",sans-serif`;ctx.fillText(c.t,c.x,c.y)}}
+  // ground
+  gr=ctx.createLinearGradient(0,HORIZON,0,H);gr.addColorStop(0,'#0E1757');gr.addColorStop(1,'#0B1440');
+  ctx.fillStyle=gr;ctx.fillRect(0,HORIZON,W,H-HORIZON);
+  // road
+  const nL=P(-0.62,SPAWN_Z),nR=P(0.62,SPAWN_Z),fL=P(-0.62,-1.2),fR=P(0.62,-1.2);
+  ctx.fillStyle='#16237A';ctx.beginPath();ctx.moveTo(nL.x,nL.y);ctx.lineTo(nR.x,nR.y);ctx.lineTo(fR.x+900,H+200);ctx.lineTo(fL.x-900,H+200);ctx.closePath();
+  // proper trapezoid
+  ctx.beginPath();const a=P(-0.62,SPAWN_Z),b=P(0.62,SPAWN_Z),c2=P(0.62,-1.5),d=P(-0.62,-1.5);
+  ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.lineTo(c2.x,c2.y);ctx.lineTo(d.x,d.y);ctx.closePath();ctx.fill();
+  // cross lines scrolling
+  const sc=g?g.scroll:0;
+  for(let z=4-sc;z<SPAWN_Z;z+=4){const l=P(-0.62,z),r=P(0.62,z);const al=Math.min(1,(1-z/SPAWN_Z))*0.55;
+    ctx.strokeStyle=`rgba(63,216,255,${al})`;ctx.lineWidth=Math.max(1,2*l.s);ctx.beginPath();ctx.moveTo(l.x,l.y);ctx.lineTo(r.x,r.y);ctx.stroke()}
+  // side grid on ground
+  for(const sx of [-2.4,-1.6,-1.0,1.0,1.6,2.4]){const f=P(sx,SPAWN_Z),n=P(sx,-1.5);ctx.strokeStyle='rgba(63,216,255,.12)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(f.x,f.y);ctx.lineTo(n.x,n.y);ctx.stroke()}
+  // road edges + lane dividers
+  for(const [x,al,w] of [[-0.62,.9,4],[0.62,.9,4],[-LANE/2,.4,2],[LANE/2,.4,2]]){
+    const f=P(x,SPAWN_Z),n=P(x,-1.5);ctx.strokeStyle=`rgba(63,216,255,${al})`;ctx.lineWidth=w;ctx.shadowColor='#3FD8FF';ctx.shadowBlur=w>2?10:0;
+    ctx.beginPath();ctx.moveTo(f.x,f.y);ctx.lineTo(n.x,n.y);ctx.stroke()}
+  ctx.shadowBlur=0;
+  // horizon glow
+  gr=ctx.createLinearGradient(0,HORIZON-30,0,HORIZON+30);gr.addColorStop(0,'rgba(63,216,255,0)');gr.addColorStop(.5,'rgba(63,216,255,.35)');gr.addColorStop(1,'rgba(63,216,255,0)');
+  ctx.fillStyle=gr;ctx.fillRect(0,HORIZON-30,W,60);
+}
+function drawVirus(x,y,r,spin,big){
+  ctx.save();ctx.translate(x,y);ctx.rotate(spin*0.4);
+  const body=big?'#C21A5C':'#FF3E8A', knob=big?'#FF7A3D':'#FFD23F';
+  ctx.shadowColor=big?'#FF2266':'#FF3E8A';ctx.shadowBlur=r*0.5;
+  const n=big?12:9;
+  for(let i=0;i<n;i++){const a=i/n*Math.PI*2;ctx.strokeStyle=body;ctx.lineWidth=r*0.16;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(a)*r*1.25,Math.sin(a)*r*1.25);ctx.stroke();
+    ctx.fillStyle=knob;ctx.beginPath();ctx.arc(Math.cos(a)*r*1.3,Math.sin(a)*r*1.3,r*0.17,0,7);ctx.fill()}
+  ctx.fillStyle=body;ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(255,255,255,.22)';ctx.beginPath();ctx.arc(-r*.3,-r*.35,r*.35,0,7);ctx.fill();
+  ctx.rotate(-spin*0.4);
+  // eyes
+  ctx.fillStyle='#fff';for(const s of[-1,1]){ctx.beginPath();ctx.ellipse(s*r*.32,-r*.05,r*.2,r*.24,0,0,7);ctx.fill()}
+  ctx.fillStyle='#1A0630';for(const s of[-1,1]){ctx.beginPath();ctx.arc(s*r*.3,0,r*.11,0,7);ctx.fill()}
+  ctx.strokeStyle='#1A0630';ctx.lineWidth=r*.1;for(const s of[-1,1]){ctx.beginPath();ctx.moveTo(s*r*.55,-r*.38);ctx.lineTo(s*r*.12,-r*.22);ctx.stroke()}
+  if(big){ctx.fillStyle='#1A0630';ctx.beginPath();ctx.moveTo(-r*.3,r*.35);ctx.lineTo(0,r*.25);ctx.lineTo(r*.3,r*.35);ctx.lineTo(r*.3,r*.45);ctx.lineTo(-r*.3,r*.45);ctx.fill()}
+  ctx.restore();
+}
+function drawVax(x,y,r,t){
+  ctx.save();ctx.translate(x,y+Math.sin(t*3)*r*.15);ctx.rotate(-0.5);
+  ctx.shadowColor='#3CF2B5';ctx.shadowBlur=r*.9;
+  const w=r*.75,h=r*1.9;
+  ctx.fillStyle='#3CF2B5';rr(-w/2,-h/2,w,h/2,w/2,true);
+  ctx.fillStyle='#F4FFFB';rr(-w/2,0,w,h/2,w/2,false);ctx.shadowBlur=0;
+  ctx.fillStyle='#0B7A5C';ctx.fillRect(-w*.12,-h*.36,w*.24,h*.24);ctx.fillRect(-w*.3,-h*.3,w*.6,w*.24);
+  ctx.restore();
+}
+function rr(x,y,w,h,rad,top){ctx.beginPath();if(top){ctx.moveTo(x,y+h);ctx.lineTo(x,y+rad);ctx.arc(x+rad,y+rad,rad,Math.PI,0);ctx.lineTo(x+w,y+h)}else{ctx.moveTo(x,y);ctx.lineTo(x+w,y);ctx.lineTo(x+w,y+h-rad);ctx.arc(x+rad,y+h-rad,rad,0,Math.PI);ctx.lineTo(x,y)}ctx.closePath();ctx.fill()}
+function drawBit(x,y,r,t){ctx.save();ctx.translate(x,y);ctx.scale(Math.cos(t*2),1);ctx.shadowColor='#3FD8FF';ctx.shadowBlur=r;
+  ctx.fillStyle='#3FD8FF';ctx.beginPath();for(let i=0;i<6;i++){const a=i/6*Math.PI*2+Math.PI/6;ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r)}ctx.closePath();ctx.fill();
+  ctx.shadowBlur=0;ctx.fillStyle='#0B1440';ctx.font=`${r*1.1|0}px "Do Hyeon",sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('1',0,1);ctx.restore()}
+
+function drawObjs(){
+  const list=G.objs.filter(o=>o.z>-1.2&&o.z<SPAWN_Z).sort((a,b)=>b.z-a.z);
+  for(const o of list){
+    if(o.hit&&o.type!=='virus'&&o.type!=='big')continue;
+    const p=P(o.lane*LANE,o.z);const fade=Math.min(1,(SPAWN_Z-o.z)/10);ctx.globalAlpha=fade*(o.hit?.35:1);
+    // shadow
+    ctx.fillStyle='rgba(0,0,20,.35)';ctx.beginPath();ctx.ellipse(p.x,p.y,50*p.s,12*p.s,0,0,7);ctx.fill();
+    if(o.type==='virus')drawVirus(p.x,p.y-42*p.s,34*p.s,o.spin,false);
+    else if(o.type==='big')drawVirus(p.x,p.y-66*p.s,56*p.s,o.spin,true);
+    else if(o.type==='vax')drawVax(p.x,p.y-64*p.s,42*p.s,G.t);
+    else drawBit(p.x,p.y-40*p.s,16*p.s,G.t+o.spin);
+    ctx.globalAlpha=1;
+  }
+}
+function drawPlayer(){
+  const g=G, px=CX+g.x*440, im=imgs[charKey];
+  // shadow
+  const sh=1-g.jumpY/260;ctx.fillStyle='rgba(0,0,20,.45)';ctx.beginPath();ctx.ellipse(px,FEET_Y,58*sh,14*sh,0,0,7);ctx.fill();
+  let cell;
+  if(g.mood==='hurt')cell=7; else if(g.mood==='happy')cell=6;
+  else if(g.jumpT>=0)cell=3; else cell=1+(Math.floor(g.anim)%5);
+  if(g.inv>0&&g.mood!=='hurt'&&Math.floor(g.t*14)%2)ctx.globalAlpha=.4;
+  const scale=160/CHAR_H, sz=CELL*scale, tilt=(g.lane*LANE-g.x)*0.9;
+  ctx.save();ctx.translate(px,FEET_Y-g.jumpY);ctx.rotate(-tilt*0.6);
+  ctx.drawImage(im,cell*CELL,0,CELL,CELL,-sz/2,-FEET*scale,sz,sz);
+  ctx.restore();ctx.globalAlpha=1;
+}
+function drawParts(){for(const p of G.parts){ctx.globalAlpha=Math.max(0,p.life*1.8);ctx.fillStyle=`rgb(${p.col})`;ctx.fillRect(p.x-3,p.y-3,6,6)}ctx.globalAlpha=1}
+
+function frame(ts){
+  const dt=Math.min(0.05,(ts-last)/1000||0);last=ts;
+  if(state==='play')update(dt);
+  ctx.save();
+  if(G&&G.shake>0){ctx.translate((Math.random()-.5)*14*G.shake/.35,(Math.random()-.5)*10*G.shake/.35)}
+  drawBG();
+  if(G&&(state==='play'||state==='pause'||state==='over')){drawObjs();drawPlayer();drawParts();
+    if(G.flash>0){ctx.fillStyle=`rgba(${G.flashCol},${G.flash*0.35})`;ctx.fillRect(0,0,W,H)}}
+  ctx.restore();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------- UI ----------
+function renderLives(){const el=document.getElementById('lives');el.innerHTML='';for(let i=0;i<5;i++){const s=document.createElement('span');s.textContent=i<G.lives?'💙':'🤍';if(i>=G.lives)s.style.opacity=.35;el.appendChild(s)}}
+function updateScore(){document.getElementById('score').innerHTML=`${Math.floor(G.score).toLocaleString()}<small>${Math.floor(G.dist)} m</small>`}
+let toastT;function toast(msg,col){const t=document.getElementById('toast');t.textContent=msg;t.style.color=col;t.style.opacity=1;clearTimeout(toastT);toastT=setTimeout(()=>t.style.opacity=0,900)}
+function startGame(){newGame();state='play';show(null);document.getElementById('hud').classList.add('on');document.getElementById('pad').classList.toggle('on',isTouch);
+  toast('작은 바이러스는 점프, 큰 바이러스는 피하기!','var(--ink)')}
+function gameOver(){state='over';const s=Math.floor(G.score);const nb=s>best;if(nb){best=s;try{localStorage.setItem('vd_best',best)}catch(e){}}
+  document.getElementById('finalScore').textContent=s.toLocaleString();
+  document.getElementById('finalInfo').textContent=`${CHARS[charKey].name} · ${Math.floor(G.dist)} m 달림 · ${nb?'새 최고 기록!':'최고 기록 '+best.toLocaleString()}`;
+  document.getElementById('pad').classList.remove('on');setTimeout(()=>show('sOver'),600)}
+function pause(){if(state!=='play')return;state='pause';show('sPause')}
+function resume(){state='play';show(null);last=performance.now()}
+
+document.getElementById('toSelect').onclick=()=>{state='select';show('sSelect')};
+document.querySelectorAll('.card').forEach(c=>{const pick=()=>{charKey=c.dataset.c;document.querySelectorAll('.card').forEach(x=>{x.classList.toggle('sel',x===c);x.setAttribute('aria-pressed',x===c)})};
+  c.onclick=pick;c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick()}}});
+document.getElementById('startBtn').onclick=startGame;
+document.getElementById('againBtn').onclick=startGame;
+document.getElementById('changeBtn').onclick=()=>{state='select';document.getElementById('hud').classList.remove('on');show('sSelect')};
+document.getElementById('pauseBtn').onclick=pause;
+document.getElementById('resumeBtn').onclick=resume;
+document.getElementById('quitBtn').onclick=()=>{state='title';G=null;document.getElementById('hud').classList.remove('on');document.getElementById('pad').classList.remove('on');show('sTitle')};
+
+function act(k){if(state!=='play')return;const g=G;
+  if(k==='left')g.lane=Math.max(-1,g.lane-1);else if(k==='right')g.lane=Math.min(1,g.lane+1);
+  else if(k==='jump'&&g.jumpT<0){g.jumpT=0}}
+addEventListener('keydown',e=>{const m={ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',ArrowUp:'jump',KeyW:'jump',Space:'jump'};
+  if(m[e.code]&&state==='play'){e.preventDefault();act(m[e.code])}
+  if((e.code==='KeyP'||e.code==='Escape')){state==='play'?pause():state==='pause'&&resume()}});
+document.querySelectorAll('#pad button').forEach(b=>b.addEventListener('pointerdown',e=>{e.preventDefault();act(b.dataset.k)}));
+let sx=0,sy=0,st=0;
+cv.addEventListener('pointerdown',e=>{sx=e.clientX;sy=e.clientY;st=performance.now()});
+cv.addEventListener('pointerup',e=>{const dx=e.clientX-sx,dy=e.clientY-sy;if(Math.max(Math.abs(dx),Math.abs(dy))<24){if(performance.now()-st<300)act('jump');return}
+  if(Math.abs(dx)>Math.abs(dy))act(dx<0?'left':'right');else if(dy<0)act('jump')});
+</script>
+</body>
+</html>
